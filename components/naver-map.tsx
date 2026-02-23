@@ -62,14 +62,6 @@ type NaverMapsGlobal = {
   };
 };
 
-function isMobileUserAgent() {
-  if (typeof navigator === "undefined") return false;
-
-  return /Android|iPhone|iPad|iPod|Mobile|Windows Phone/i.test(
-    navigator.userAgent,
-  );
-}
-
 declare global {
   interface Window {
     naver?: NaverMapsGlobal;
@@ -253,37 +245,56 @@ export default function NaverMap({
       });
     }
 
-    if (isMobileUserAgent() && navigator.geolocation) {
-      let isFirstPosition = true;
+    if (navigator.geolocation) {
+      const updateCurrentLocation = (position: GeolocationPosition) => {
+        const currentLatLng = new naver.maps.LatLng(
+          position.coords.latitude,
+          position.coords.longitude,
+        );
+
+        const shouldCenterToCurrentLocation =
+          typeof window !== "undefined" &&
+          window.matchMedia("(max-width: 1023px)").matches;
+
+        if (shouldCenterToCurrentLocation) {
+          if (typeof map.panTo === "function") {
+            map.panTo(currentLatLng);
+          } else {
+            map.setCenter(currentLatLng);
+          }
+        }
+
+        if (locationMarkerRef.current) {
+          locationMarkerRef.current.setPosition(currentLatLng);
+        } else {
+          const locationMarkerElement = createLocationMarkerElement();
+          locationMarkerRef.current = new naver.maps.Marker({
+            position: currentLatLng,
+            map,
+            title: language === "ko" ? "현재 위치" : "Current Location",
+            icon: {
+              content: locationMarkerElement,
+              size: { width: 24, height: 24 },
+              anchor: { x: 12, y: 12 },
+            },
+          });
+        }
+      };
+
+      navigator.geolocation.getCurrentPosition(
+        updateCurrentLocation,
+        () => {
+          // Keep default center when location access fails or is denied.
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 7000,
+          maximumAge: 0,
+        },
+      );
 
       locationWatchIdRef.current = navigator.geolocation.watchPosition(
-        (position) => {
-          const currentLatLng = new naver.maps.LatLng(
-            position.coords.latitude,
-            position.coords.longitude,
-          );
-
-          if (isFirstPosition) {
-            map.setCenter(currentLatLng);
-            isFirstPosition = false;
-          }
-
-          if (locationMarkerRef.current) {
-            locationMarkerRef.current.setPosition(currentLatLng);
-          } else {
-            const locationMarkerElement = createLocationMarkerElement();
-            locationMarkerRef.current = new naver.maps.Marker({
-              position: currentLatLng,
-              map,
-              title: language === "ko" ? "현재 위치" : "Current Location",
-              icon: {
-                content: locationMarkerElement,
-                size: { width: 24, height: 24 },
-                anchor: { x: 12, y: 12 },
-              },
-            });
-          }
-        },
+        updateCurrentLocation,
         () => {
           // Keep default center when location access fails or is denied.
         },
