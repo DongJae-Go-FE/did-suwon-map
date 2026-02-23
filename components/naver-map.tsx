@@ -96,6 +96,7 @@ function shouldCenterToCurrentLocationOnDevice() {
 
   const hasTouch =
     navigator.maxTouchPoints > 0 ||
+    "ontouchstart" in window ||
     window.matchMedia("(pointer: coarse)").matches ||
     window.matchMedia("(any-pointer: coarse)").matches;
 
@@ -199,6 +200,14 @@ export default function NaverMap({
     }
 
     const mapCenter = new naver.maps.LatLng(center.lat, center.lng);
+    let isDisposed = false;
+
+    // Clear stale location tracking/marker refs before initializing a new map instance.
+    if (locationWatchIdRef.current !== null) {
+      navigator.geolocation?.clearWatch(locationWatchIdRef.current);
+      locationWatchIdRef.current = null;
+    }
+    locationMarkerRef.current = null;
 
     const map = new naver.maps.Map(mapElementRef.current, {
       center: mapCenter,
@@ -261,6 +270,8 @@ export default function NaverMap({
 
     if (navigator.geolocation) {
       const updateCurrentLocation = (position: GeolocationPosition) => {
+        if (isDisposed) return;
+
         const currentLatLng = new naver.maps.LatLng(
           position.coords.latitude,
           position.coords.longitude,
@@ -322,6 +333,10 @@ export default function NaverMap({
     initializedRef.current = true;
 
     return () => {
+      isDisposed = true;
+      initializedRef.current = false;
+      locationMarkerRef.current = null;
+
       if (locationWatchIdRef.current !== null) {
         navigator.geolocation.clearWatch(locationWatchIdRef.current);
         locationWatchIdRef.current = null;
