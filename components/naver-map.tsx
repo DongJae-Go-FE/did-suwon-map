@@ -89,6 +89,20 @@ type NaverMapProps = {
   }>;
 };
 
+function shouldCenterToCurrentLocationOnDevice() {
+  if (typeof window === "undefined" || typeof navigator === "undefined") {
+    return false;
+  }
+
+  const hasTouch =
+    navigator.maxTouchPoints > 0 ||
+    window.matchMedia("(pointer: coarse)").matches ||
+    window.matchMedia("(any-pointer: coarse)").matches;
+
+  // Requirement: keep Suwon Diocese center only on PC.
+  return hasTouch;
+}
+
 function createMarkerElement(label: string): HTMLDivElement {
   const container = document.createElement("div");
   const root = createRoot(container);
@@ -253,8 +267,7 @@ export default function NaverMap({
         );
 
         const shouldCenterToCurrentLocation =
-          typeof window !== "undefined" &&
-          window.matchMedia("(max-width: 1023px)").matches;
+          shouldCenterToCurrentLocationOnDevice();
 
         if (shouldCenterToCurrentLocation) {
           if (typeof map.panTo === "function") {
