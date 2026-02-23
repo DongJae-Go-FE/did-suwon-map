@@ -133,6 +133,7 @@ export default function NaverMap({
   const markerNavigatingRef = useRef(false);
   const locationMarkerRef = useRef<NaverMarkerInstance | null>(null);
   const locationWatchIdRef = useRef<number | null>(null);
+  const hasCenteredToCurrentLocationRef = useRef(false);
   const [isSdkReady, setIsSdkReady] = useState(
     () =>
       typeof window !== "undefined" &&
@@ -208,6 +209,7 @@ export default function NaverMap({
       locationWatchIdRef.current = null;
     }
     locationMarkerRef.current = null;
+    hasCenteredToCurrentLocationRef.current = false;
 
     const map = new naver.maps.Map(mapElementRef.current, {
       center: mapCenter,
@@ -281,11 +283,10 @@ export default function NaverMap({
           shouldCenterToCurrentLocationOnDevice();
 
         if (shouldCenterToCurrentLocation) {
-          if (typeof map.panTo === "function") {
-            map.panTo(currentLatLng);
-          } else {
-            map.setCenter(currentLatLng);
-          }
+          // On touch devices, prefer immediate center updates over animated pan
+          // so current location feels responsive.
+          map.setCenter(currentLatLng);
+          hasCenteredToCurrentLocationRef.current = true;
         }
 
         if (locationMarkerRef.current) {
@@ -304,6 +305,19 @@ export default function NaverMap({
           });
         }
       };
+
+      // Try to use a recent cached position first for faster initial centering.
+      navigator.geolocation.getCurrentPosition(
+        updateCurrentLocation,
+        () => {
+          // Ignore and fall back to high-accuracy watch/get below.
+        },
+        {
+          enableHighAccuracy: false,
+          timeout: 1200,
+          maximumAge: 60_000,
+        },
+      );
 
       navigator.geolocation.getCurrentPosition(
         updateCurrentLocation,
@@ -336,6 +350,7 @@ export default function NaverMap({
       isDisposed = true;
       initializedRef.current = false;
       locationMarkerRef.current = null;
+      hasCenteredToCurrentLocationRef.current = false;
 
       if (locationWatchIdRef.current !== null) {
         navigator.geolocation.clearWatch(locationWatchIdRef.current);
