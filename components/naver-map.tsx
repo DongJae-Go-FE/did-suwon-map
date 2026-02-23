@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { LocateFixed } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PlaceMarker, LocationMarker } from "./map-markers";
 
@@ -131,9 +132,12 @@ export default function NaverMap({
   const mapElementRef = useRef<HTMLDivElement | null>(null);
   const initializedRef = useRef(false);
   const markerNavigatingRef = useRef(false);
+  const mapInstanceRef = useRef<NaverMapInstance | null>(null);
   const locationMarkerRef = useRef<NaverMarkerInstance | null>(null);
   const locationWatchIdRef = useRef<number | null>(null);
-  const hasCenteredToCurrentLocationRef = useRef(false);
+  const currentCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
   const [isSdkReady, setIsSdkReady] = useState(
     () =>
       typeof window !== "undefined" &&
@@ -147,6 +151,48 @@ export default function NaverMap({
     if (!clientId) return "";
     return `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${clientId}&language=${language}`;
   }, [clientId, language]);
+
+  useEffect(() => {
+    setIsTouchDevice(shouldCenterToCurrentLocationOnDevice());
+  }, []);
+
+  const moveToCurrentLocation = () => {
+    const naver = window.naver;
+    const map = mapInstanceRef.current;
+
+    if (!naver?.maps || !map || !navigator.geolocation) {
+      return;
+    }
+
+    const centerTo = (lat: number, lng: number) => {
+      const nextLatLng = new naver.maps.LatLng(lat, lng);
+      map.setCenter(nextLatLng);
+    };
+
+    if (currentCoordsRef.current) {
+      centerTo(currentCoordsRef.current.lat, currentCoordsRef.current.lng);
+      return;
+    }
+
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        currentCoordsRef.current = { lat, lng };
+        centerTo(lat, lng);
+        setIsLocating(false);
+      },
+      () => {
+        setIsLocating(false);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 7000,
+        maximumAge: 0,
+      },
+    );
+  };
 
   useEffect(() => {
     if (!clientId) {
@@ -202,6 +248,7 @@ export default function NaverMap({
 
     const mapCenter = new naver.maps.LatLng(center.lat, center.lng);
     let isDisposed = false;
+    const isTouchDeviceMap = shouldCenterToCurrentLocationOnDevice();
 
     // Clear stale location tracking/marker refs before initializing a new map instance.
     if (locationWatchIdRef.current !== null) {
@@ -209,16 +256,17 @@ export default function NaverMap({
       locationWatchIdRef.current = null;
     }
     locationMarkerRef.current = null;
-    hasCenteredToCurrentLocationRef.current = false;
+    currentCoordsRef.current = null;
 
     const map = new naver.maps.Map(mapElementRef.current, {
       center: mapCenter,
       zoom,
-      zoomControl: true,
+      zoomControl: !isTouchDeviceMap,
       zoomControlOptions: {
         position: naver.maps.Position.TOP_RIGHT,
       },
     });
+    mapInstanceRef.current = map;
 
     if (markers.length === 0) {
       const marker = new naver.maps.Marker({
@@ -278,16 +326,10 @@ export default function NaverMap({
           position.coords.latitude,
           position.coords.longitude,
         );
-
-        const shouldCenterToCurrentLocation =
-          shouldCenterToCurrentLocationOnDevice();
-
-        if (shouldCenterToCurrentLocation) {
-          // On touch devices, prefer immediate center updates over animated pan
-          // so current location feels responsive.
-          map.setCenter(currentLatLng);
-          hasCenteredToCurrentLocationRef.current = true;
-        }
+        currentCoordsRef.current = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        };
 
         if (locationMarkerRef.current) {
           locationMarkerRef.current.setPosition(currentLatLng);
@@ -349,8 +391,9 @@ export default function NaverMap({
     return () => {
       isDisposed = true;
       initializedRef.current = false;
+      mapInstanceRef.current = null;
       locationMarkerRef.current = null;
-      hasCenteredToCurrentLocationRef.current = false;
+      currentCoordsRef.current = null;
 
       if (locationWatchIdRef.current !== null) {
         navigator.geolocation.clearWatch(locationWatchIdRef.current);
@@ -385,6 +428,17 @@ export default function NaverMap({
   return (
     <div className={cn("relative overflow-hidden bg-white", className)}>
       <div ref={mapElementRef} className="h-full w-full" />
+      {isTouchDevice ? (
+        <button
+          type="button"
+          onClick={moveToCurrentLocation}
+          className="absolute right-4 bottom-8 z-20 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-white/95 px-3 py-2 text-xs font-semibold text-[#2D509F] shadow-lg backdrop-blur transition hover:bg-blue-50"
+          aria-label={language === "ko" ? "현재 위치로 이동" : "Move to current location"}
+        >
+          <LocateFixed className="h-4 w-4" />
+          {isLocating ? (language === "ko" ? "위치 확인 중" : "Locating") : language === "ko" ? "내 위치" : "My Location"}
+        </button>
+      ) : null}
       {!isSdkReady ? (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-blue-50/60 text-sm font-medium text-[#2D509F]">
           네이버 지도 불러오는 중...
