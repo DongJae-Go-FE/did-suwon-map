@@ -136,7 +136,7 @@ export default function NaverMap({
   const locationMarkerRef = useRef<NaverMarkerInstance | null>(null);
   const locationWatchIdRef = useRef<number | null>(null);
   const currentCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
-  const [isTouchDevice, setIsTouchDevice] = useState(false);
+  const [isTouchDevice] = useState(() => shouldCenterToCurrentLocationOnDevice());
   const [isLocating, setIsLocating] = useState(false);
   const [isSdkReady, setIsSdkReady] = useState(
     () =>
@@ -151,10 +151,6 @@ export default function NaverMap({
     if (!clientId) return "";
     return `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${clientId}&language=${language}`;
   }, [clientId, language]);
-
-  useEffect(() => {
-    setIsTouchDevice(shouldCenterToCurrentLocationOnDevice());
-  }, []);
 
   const moveToCurrentLocation = () => {
     const naver = window.naver;
